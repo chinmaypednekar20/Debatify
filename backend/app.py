@@ -16,7 +16,8 @@ from .auth import (
     create_access_token,
     get_current_user,
 )
-from .chatbot_api import router as chatbot_router
+from .chatbot.retriever import retrieve_chunks
+from .chatbot.llm import generate_answer
 
 # ─── Create tables ────────────────────────────────────────
 Base.metadata.create_all(bind=engine)
@@ -32,8 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Routers ──────────────────────────────────────────────
-app.include_router(chatbot_router)
+
 
 
 # ═══════════════════════════════════════════════════════════
@@ -707,8 +707,6 @@ def overall_summary(db: Session = Depends(get_db)):
     top_min = top_ministries[0] if top_ministries else None
 
     try:
-        from .chatbot.llm import generate_answer
-        
         # Build a concise context to send to LLM (using top categories to avoid massive context)
         context_lines = []
         for cat in category_breakdown[:10]:
@@ -740,3 +738,73 @@ def overall_summary(db: Session = Depends(get_db)):
         ],
         "category_breakdown": category_breakdown,
     }
+
+
+# ═══════════════════════════════════════════════════════════
+#  CHATBOT
+# ═══════════════════════════════════════════════════════════
+
+class ChatRequest(BaseModel):
+    question: str
+
+
+class ChatResponse(BaseModel):
+    answer: str
+
+
+def _build_summary_text(debate: Debate) -> str:
+    """Build a rich summary text from a Debate and its Questions for the chatbot retriever."""
+    parts = []
+    for i, q in enumerate(debate.questions, 1):
+        block = [f"### Question {i} ###"]
+        if q.asked_by:
+            block.append(f"Member of Parliament: {q.asked_by}")
+        if q.ministry:
+            block.append(f"Ministry Involved: {q.ministry}")
+        if q.category:
+            block.append(f"Category: {q.category}")
+        if q.question_about:
+            block.append(f"Topic/Subject: {q.question_about}")
+        if q.question_summary:
+            block.append(f"Question Summary: {q.question_summary}")
+        if q.answer_summary:
+            block.append(f"Minister's Answer Summary: {q.answer_summary}")
+        if q.overall_summary:
+            block.append(f"Combined Q&A Summary: {q.overall_summary}")
+        if q.key_answer:
+            block.append(f"Key Takeaway/Answer: {q.key_answer}")
+        if len(block) > 1:
+            parts.append("\n".join(block))
+    return "\n\n".join(parts)
+
+
+@app.post("/api/summaries/{summary_id}/chat", response_model=ChatResponse)
+def chat_with_summary(
+    summary_id: int,
+    req: ChatRequest,
+    db: Session = Depends(get_db),
+) -> ChatResponse:
+    """Accept a question and return an AI answer grounded only in the specified debate's content."""
+    debate = db.query(Debate).filter(Debate.id == summary_id).first()
+    if not debate:
+        raise HTTPException(status_code=404, detail="Debate not found")
+
+    summary_text = _build_summary_text(debate)
+    if not summary_text.strip():
+        raise HTTPException(status_code=422, detail="This debate has no summary content to search.")
+
+    chunks = retrieve_chunks(summary_text, req.question)
+
+    context_parts = []
+    if debate.overall_summary:
+        context_parts.append(f"MAIN DEBATE OVERVIEW:\n{debate.overall_summary}")
+    if chunks:
+        context_parts.append("RELEVANT DETAILS FROM DEBATE TRANSACTIONS:")
+        context_parts.extend(chunks)
+
+    if not context_parts:
+        return ChatResponse(answer="I'm sorry, I don't see any summary content for this debate to answer your question.")
+
+    context = "\n\n---\n\n".join(context_parts)
+    answer = generate_answer(req.question, context)
+    return ChatResponse(answer=answer)
