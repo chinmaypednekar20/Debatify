@@ -69,6 +69,7 @@ class QuestionOut(BaseModel):
     category: Optional[str]
     question_about: Optional[str]
     key_answer: Optional[str]
+    full_content: Optional[str]
 
     class Config:
         from_attributes = True
@@ -85,6 +86,7 @@ class DebateDetail(BaseModel):
     title: str
     date: date_type
     overall_summary: Optional[str]
+    full_text: Optional[str]
     questions: List[QuestionOut]
 
     class Config:
@@ -773,8 +775,11 @@ def _build_summary_text(debate: Debate) -> str:
             block.append(f"Combined Q&A Summary: {q.overall_summary}")
         if q.key_answer:
             block.append(f"Key Takeaway/Answer: {q.key_answer}")
+        if q.full_content:
+            block.append(f"FULL DETAILED TRANSCRIPT OF THIS Q&A:\n{q.full_content}")
         if len(block) > 1:
             parts.append("\n".join(block))
+        
     return "\n\n".join(parts)
 
 
@@ -793,7 +798,7 @@ def chat_with_summary(
     if not summary_text.strip():
         raise HTTPException(status_code=422, detail="This debate has no summary content to search.")
 
-    chunks = retrieve_chunks(summary_text, req.question)
+    chunks = retrieve_chunks(debate.id, summary_text, req.question)
 
     context_parts = []
     if debate.overall_summary:

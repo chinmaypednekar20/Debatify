@@ -23,6 +23,7 @@ class Debate(Base):
     date = Column(Date, nullable=False, index=True)
     source_file = Column(String(500), unique=True, nullable=False)
     overall_summary = Column(Text, nullable=True)
+    full_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     questions = relationship("Question", back_populates="debate", cascade="all, delete-orphan")
@@ -47,5 +48,6 @@ class Question(Base):
     category = Column(String(200), nullable=True, index=True)
     question_about = Column(String(500), nullable=True)
     key_answer = Column(Text, nullable=True)
+    full_content = Column(Text, nullable=True)
 
     debate = relationship("Debate", back_populates="questions")

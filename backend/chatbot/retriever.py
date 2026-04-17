@@ -15,6 +15,9 @@ from .config import EMBED_MODEL, TOP_K, CHUNK_SIZE, CHUNK_OVERLAP
 # Cache for the embedding model
 _model = None
 
+# Cache for in-memory FAISS indices
+_index_cache = {}
+
 def get_model():
     global _model
     if _model is None:
@@ -59,29 +62,45 @@ def _chunk_text(text: str) -> list[str]:
     return [c for c in chunks if len(c) > 20]  # drop extremely tiny chunks
 
 
-def retrieve_chunks(summary_text: str, question: str) -> list[str]:
+def retrieve_chunks(debate_id: int, summary_text: str, question: str) -> list[str]:
     """
     Retrieve the top-k most relevant text chunks from a summary.
 
     Args:
+        debate_id: The ID of the debate to cache index for.
         summary_text: The full debate summary text to search within.
         question: The user's question.
 
     Returns:
         A list of relevant text chunks (strings).
     """
-    chunks = _chunk_text(summary_text)
-    if not chunks:
-        return []
+    global _index_cache
+    
+    if debate_id not in _index_cache:
+        print(f"DEBUG: Building FAISS index for debate {debate_id}...")
+        chunks = _chunk_text(summary_text)
+        if not chunks:
+            return []
 
-    # Build in-memory FAISS index for this summary
-    model = get_model()
-    chunk_embeddings = model.encode(chunks).astype("float32")
-    dimension = chunk_embeddings.shape[1]
-    index = faiss.IndexFlatL2(dimension)
-    index.add(chunk_embeddings)
+        # Build in-memory FAISS index for this summary
+        model = get_model()
+        chunk_embeddings = model.encode(chunks).astype("float32")
+        dimension = chunk_embeddings.shape[1]
+        index = faiss.IndexFlatL2(dimension)
+        index.add(chunk_embeddings)
+        
+        _index_cache[debate_id] = {
+            "index": index,
+            "chunks": chunks
+        }
+        print(f"DEBUG: Index for debate {debate_id} cached with {len(chunks)} chunks.")
+
+    cached = _index_cache[debate_id]
+    index = cached["index"]
+    chunks = cached["chunks"]
 
     # Embed the question and search
+    model = get_model()
     question_embedding = model.encode([question]).astype("float32")
     k = min(TOP_K, len(chunks))
     distances, indices = index.search(question_embedding, k)
