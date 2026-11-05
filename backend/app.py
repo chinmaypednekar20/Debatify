@@ -523,6 +523,19 @@ def normalize_category(raw: str) -> str:
     return raw.strip().title()
 
 
+def clean_summary_text(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return text
+    # Strip common first-person analysis preambles
+    pattern = r"^(?:As I analyzed the (?:parliamentary )?debate(?: session)?,?\s*(?:it became clear that|it is clear that)?|Based on the analysis of the (?:parliamentary )?debate(?: session)?,?\s*(?:it is clear that)?|Analyzing the (?:parliamentary )?debate(?: session)?,?\s*(?:it becomes clear that)?|Upon analyzing the (?:parliamentary )?debate(?: session)?,?\s*(?:it becomes clear that)?)\s*"
+    
+    cleaned = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+    if cleaned and cleaned != text:
+        # Capitalize the first letter
+        cleaned = cleaned[0].upper() + cleaned[1:]
+    return cleaned
+
+
 # ═══════════════════════════════════════════════════════════
 #  AUTH ROUTES
 # ═══════════════════════════════════════════════════════════
@@ -571,12 +584,19 @@ def list_debates(date: Optional[date_type] = None, db: Session = Depends(get_db)
 
     result = []
     for d in debates:
+        non_empty_qs = [
+            q for q in d.questions
+            if (q.question_summary and q.question_summary.strip()) or
+               (q.answer_summary and q.answer_summary.strip()) or
+               (q.overall_summary and q.overall_summary.strip()) or
+               (q.question_about and q.question_about.strip())
+        ]
         result.append(DebateListItem(
             id=d.id,
             title=d.title,
             date=d.date,
-            overall_summary=d.overall_summary,
-            question_count=len(d.questions),
+            overall_summary=clean_summary_text(d.overall_summary),
+            question_count=len(non_empty_qs),
         ))
     return result
 
@@ -586,7 +606,41 @@ def get_debate(debate_id: int, db: Session = Depends(get_db)):
     debate = db.query(Debate).filter(Debate.id == debate_id).first()
     if not debate:
         raise HTTPException(status_code=404, detail="Debate not found")
-    return debate
+    
+    filtered_qs = []
+    for q in debate.questions:
+        if (
+            (q.question_summary and q.question_summary.strip()) or
+            (q.answer_summary and q.answer_summary.strip()) or
+            (q.overall_summary and q.overall_summary.strip()) or
+            (q.question_about and q.question_about.strip())
+        ):
+            filtered_qs.append(QuestionOut(
+                id=q.id,
+                original_id=q.original_id,
+                language=q.language,
+                has_table=q.has_table,
+                word_count=q.word_count,
+                asked_by=q.asked_by,
+                ministry=q.ministry,
+                question_summary=clean_summary_text(q.question_summary),
+                answered_by=q.answered_by,
+                answer_summary=clean_summary_text(q.answer_summary),
+                overall_summary=clean_summary_text(q.overall_summary),
+                category=q.category,
+                question_about=clean_summary_text(q.question_about),
+                key_answer=clean_summary_text(q.key_answer),
+                full_content=q.full_content
+            ))
+
+    return DebateDetail(
+        id=debate.id,
+        title=debate.title,
+        date=debate.date,
+        overall_summary=clean_summary_text(debate.overall_summary),
+        full_text=debate.full_text,
+        questions=filtered_qs
+    )
 
 
 @app.get("/api/dates")
@@ -609,6 +663,14 @@ def _build_normalized_categories(db: Session):
     )
     grouped: Dict[str, list] = defaultdict(list)
     for q in all_qs:
+        # Check if question has any actual summary content
+        if not (
+            (q.question_summary and q.question_summary.strip()) or
+            (q.answer_summary and q.answer_summary.strip()) or
+            (q.overall_summary and q.overall_summary.strip()) or
+            (q.question_about and q.question_about.strip())
+        ):
+            continue
         norm = normalize_category(q.category)
         grouped[norm].append(q)
     return grouped
@@ -639,15 +701,15 @@ def get_category_summary(name: str, db: Session = Depends(get_db)):
             "id": q.id,
             "asked_by": q.asked_by,
             "ministry": q.ministry,
-            "question_summary": q.question_summary,
-            "answer_summary": q.answer_summary,
-            "overall_summary": q.overall_summary,
-            "question_about": q.question_about,
+            "question_summary": clean_summary_text(q.question_summary),
+            "answer_summary": clean_summary_text(q.answer_summary),
+            "overall_summary": clean_summary_text(q.overall_summary),
+            "question_about": clean_summary_text(q.question_about),
         })
 
     # Build a proper combined summary
     ministries = list({q.ministry for q in questions if q.ministry})
-    topics = [q.question_about or q.question_summary or "" for q in questions]
+    topics = [clean_summary_text(q.question_about or q.question_summary or "") for q in questions]
     topics = [t for t in topics if t]
 
     parts = []
@@ -673,7 +735,15 @@ def get_category_summary(name: str, db: Session = Depends(get_db)):
 
 @app.get("/api/overall-summary")
 def overall_summary(db: Session = Depends(get_db)):
-    questions = db.query(Question).all()
+    all_qs = db.query(Question).all()
+    # Filter out empty questions
+    questions = [
+        q for q in all_qs
+        if (q.question_summary and q.question_summary.strip()) or
+           (q.answer_summary and q.answer_summary.strip()) or
+           (q.overall_summary and q.overall_summary.strip()) or
+           (q.question_about and q.question_about.strip())
+    ]
     grouped = _build_normalized_categories(db)
 
     # Top ministries
@@ -686,7 +756,7 @@ def overall_summary(db: Session = Depends(get_db)):
     # Category breakdown with proper 1-line summaries
     category_breakdown = []
     for cat, qs in sorted(grouped.items(), key=lambda x: -len(x[1])):
-        topics = [q.question_about or q.question_summary or "" for q in qs]
+        topics = [clean_summary_text(q.question_about or q.question_summary or "") for q in qs]
         topics = [t for t in topics if t][:3]
         if topics:
             cat_summary = "Key topics: " + "; ".join(topics)
@@ -721,11 +791,12 @@ def overall_summary(db: Session = Depends(get_db)):
             f"Write a concise, high-quality analytical summary (3-4 sentences) of this parliamentary session. "
             f"There were {total_q} questions across {total_cats} categories, involving {total_ministries} ministries. "
             f"Focus on the major themes and issues discussed, integrating the facts smoothly rather than just listing numbers. "
-            f"Do not use templates like 'This session saw X questions...'. Make it sound professional and insightful."
+            f"Do not use templates like 'This session saw X questions...'. Make it sound professional and insightful. "
+            f"Ensure the response is objective, impersonal, and does NOT start with phrases like 'As I analyzed the parliamentary debate session', 'it became clear that', or 'my analysis shows'. Start directly with the core themes."
         )
         
         ai_summary = generate_answer(prompt, context_str)
-        final_summary_text = ai_summary
+        final_summary_text = clean_summary_text(ai_summary)
     except Exception as e:
         print(f"Error generating AI summary: {e}")
         final_summary_text = f"AI Error: {e}"

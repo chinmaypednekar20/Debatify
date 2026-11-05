@@ -101,6 +101,30 @@ export default function DebatePage() {
         }
     };
 
+    const handleShare = async (textToShare, title = "Debatify") => {
+        const shareText = `${title}\n\n${textToShare}\n\nLink: ${window.location.href}`;
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: title,
+                    text: shareText,
+                });
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('Error sharing:', error);
+                }
+            }
+        } else {
+            try {
+                await navigator.clipboard.writeText(shareText);
+                alert("Copied to clipboard!");
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                alert("Failed to copy to clipboard.");
+            }
+        }
+    };
+
     if (loading)
         return (
             <div className="loading">
@@ -110,7 +134,13 @@ export default function DebatePage() {
     if (!debate)
         return <div className="loading">Debate not found.</div>;
 
-    const questions = debate.questions || [];
+    const questions = (debate.questions || []).filter(
+        (q) =>
+            q.question_summary?.trim() ||
+            q.answer_summary?.trim() ||
+            q.overall_summary?.trim() ||
+            q.question_about?.trim()
+    );
 
     return (
         <div className="debate-detail">
@@ -219,14 +249,46 @@ export default function DebatePage() {
 
                                         {q.answer_summary && (
                                             <>
-                                                <div className="section-title">Answer Summary</div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', marginBottom: '0.5rem' }}>
+                                                    <div className="section-title" style={{ margin: 0 }}>Answer Summary</div>
+                                                    <button
+                                                        className="share-btn small"
+                                                        onClick={() => handleShare(q.answer_summary, "Debatify: " + (q.question_summary || "Answer Summary"))}
+                                                        title="Share or Copy Answer"
+                                                    >
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
+                                                            <circle cx="18" cy="5" r="3"></circle>
+                                                            <circle cx="6" cy="12" r="3"></circle>
+                                                            <circle cx="18" cy="19" r="3"></circle>
+                                                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                                                        </svg>
+                                                        Share
+                                                    </button>
+                                                </div>
                                                 <p className="section-text">{q.answer_summary}</p>
                                             </>
                                         )}
 
                                         {q.overall_summary && (
                                             <>
-                                                <div className="section-title">Overall Summary</div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', marginBottom: '0.5rem' }}>
+                                                    <div className="section-title" style={{ margin: 0 }}>Overall Summary</div>
+                                                    <button
+                                                        className="share-btn small"
+                                                        onClick={() => handleShare(q.overall_summary, "Debatify: " + (q.question_summary || "Overall Summary"))}
+                                                        title="Share or Copy Summary"
+                                                    >
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
+                                                            <circle cx="18" cy="5" r="3"></circle>
+                                                            <circle cx="6" cy="12" r="3"></circle>
+                                                            <circle cx="18" cy="19" r="3"></circle>
+                                                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                                                        </svg>
+                                                        Share
+                                                    </button>
+                                                </div>
                                                 <p className="section-text">{q.overall_summary}</p>
                                             </>
                                         )}
@@ -241,7 +303,23 @@ export default function DebatePage() {
             {/* Tab content — Full Summary */}
             {activeTab === "summary" && (
                 <div className="summary-box">
-                    <h2>Complete Debate Summary</h2>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                        <h2 style={{ margin: 0 }}>Complete Debate Summary</h2>
+                        <button
+                            className="share-btn"
+                            onClick={() => handleShare(debate.overall_summary, debate.title + " Summary")}
+                            title="Share or Copy Summary"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+                                <circle cx="18" cy="5" r="3"></circle>
+                                <circle cx="6" cy="12" r="3"></circle>
+                                <circle cx="18" cy="19" r="3"></circle>
+                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                            </svg>
+                            Share
+                        </button>
+                    </div>
                     <FormattedText text={debate.overall_summary} />
 
                     <h2 style={{ marginTop: "2rem" }}>All Question Summaries</h2>

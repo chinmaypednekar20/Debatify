@@ -1205,3 +1205,49 @@ a {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ═══════════ SHARE BUTTONS ═══════════ */
+.share-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background-color: var(--orange-bg);
+  color: var(--orange);
+  border: 1px solid rgba(232, 126, 36, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  outline: none;
+}
+
+.share-btn:hover {
+  background-color: var(--orange);
+  color: var(--white);
+  border-color: var(--orange);
+  box-shadow: 0 4px 12px rgba(232, 126, 36, 0.2);
+  transform: translateY(-1px);
+}
+
+.share-btn:active {
+  transform: translateY(0);
+}
+
+.share-btn.small {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  border-radius: 6px;
+  gap: 4px;
+}
+
+.share-btn svg {
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.share-btn:hover svg {
+  transform: scale(1.1);
+}

@@ -292,11 +292,13 @@ RULES:
 - Do NOT write like a report
 - Do NOT use generic phrases like "the government has taken steps"
 - Focus only on key issues discussed
+- Do NOT start with introductory/first-person phrases like "As I analyzed the parliamentary debate session", "it became clear that", "my analysis shows", or "it is clear that". Start directly with the summary of key issues (insights, not personal opinions).
 
 STYLE:
 - 1 paragraph
 - Clear and compact
 - No fluff
+- Completely objective and impersonal tone
 
 OUTPUT:
 Only the summary text.~

@@ -98,7 +98,13 @@ export default function CategoriesPage() {
                                     <div className="questions-in-cat">
                                         <h4>Questions in this Category</h4>
                                         <div className="questions-list">
-                                            {catDetail.questions.map((q, i) => (
+                                            {(catDetail.questions || []).filter(
+                                                (q) =>
+                                                    q.question_summary?.trim() ||
+                                                    q.answer_summary?.trim() ||
+                                                    q.overall_summary?.trim() ||
+                                                    q.question_about?.trim()
+                                            ).map((q, i) => (
                                                 <div key={q.id || i} className="question-item">
                                                     <div
                                                         className="question-header"

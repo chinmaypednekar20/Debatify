@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import sys
+import re
 from datetime import date, datetime
 from pathlib import Path
 
@@ -56,6 +57,19 @@ def _ensure_string(val) -> str:
     if isinstance(val, list):
         return ", ".join([str(x) for x in val])
     return str(val)
+
+
+def clean_summary_text(text: str) -> str:
+    if not text:
+        return ""
+    # Strip common first-person analysis preambles
+    pattern = r"^(?:As I analyzed the (?:parliamentary )?debate(?: session)?,?\s*(?:it became clear that|it is clear that)?|Based on the analysis of the (?:parliamentary )?debate(?: session)?,?\s*(?:it is clear that)?|Analyzing the (?:parliamentary )?debate(?: session)?,?\s*(?:it becomes clear that)?|Upon analyzing the (?:parliamentary )?debate(?: session)?,?\s*(?:it becomes clear that)?)\s*"
+    
+    cleaned = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+    if cleaned and cleaned != text:
+        # Capitalize the first letter
+        cleaned = cleaned[0].upper() + cleaned[1:]
+    return cleaned
 
 
 def import_json_file(db, filepath: str) -> bool:
@@ -209,6 +223,7 @@ def import_json_file(db, filepath: str) -> bool:
                 "Focus on the most significant policy matters, major concerns raised by MPs, and the government's key responses. "
                 "Do NOT just list statistics or category counts. Do NOT say 'This debate saw X questions...'. "
                 "Instead, weave the topics into a cohesive narrative that highlights the core political and administrative focus of the day. "
+                "Ensure the response is written in a neutral, objective, and impersonal tone. Do NOT start the summary with phrases like 'As I analyzed the parliamentary debate session', 'it became clear that', or 'my analysis shows'. Start directly with the key issues or themes."
             )
             print("  Generating high-quality AI overall summary for Debate... (this may take a moment)")
             ai_sum = generate_answer(prompt, context_str)
@@ -219,6 +234,9 @@ def import_json_file(db, filepath: str) -> bool:
         except Exception as e:
             print(f"  [WARN] Failed to generate AI summary: {e}")
             combined_summary = f"Summary generation failed: {e}"
+
+    # Clean debate summary
+    combined_summary = clean_summary_text(combined_summary)
 
     # Create or update debate
     if existing_debate:
@@ -250,8 +268,26 @@ def import_json_file(db, filepath: str) -> bool:
         orig_id = item.get("id")
         s = item.get("summary", {})
         
+        q_sum = _ensure_string(s.get("question_summary")).strip()
+        a_sum = _ensure_string(s.get("answer_summary")).strip()
+        o_sum = _ensure_string(s.get("overall_summary")).strip()
+        q_about = _ensure_string(s.get("question_about")).strip()
+
+        # If there's no extracted text, skip it (and if it exists in DB, delete it)
+        if not q_sum and not a_sum and not o_sum and not q_about:
+            if orig_id in existing_questions:
+                db.delete(existing_questions[orig_id])
+            continue
+        
         full_content = detailed_questions.get(orig_id)
         
+        # Clean summaries
+        cleaned_q_sum = clean_summary_text(q_sum)
+        cleaned_a_sum = clean_summary_text(a_sum)
+        cleaned_o_sum = clean_summary_text(o_sum)
+        cleaned_q_about = clean_summary_text(q_about)
+        cleaned_key_ans = clean_summary_text(_ensure_string(s.get("key_answer")))
+
         if orig_id in existing_questions:
             # Update existing
             q = existing_questions[orig_id]
@@ -260,13 +296,13 @@ def import_json_file(db, filepath: str) -> bool:
             q.word_count = item.get("word_count")
             q.asked_by = _ensure_string(s.get("asked_by"))
             q.ministry = _ensure_string(s.get("ministry"))
-            q.question_summary = _ensure_string(s.get("question_summary"))
+            q.question_summary = cleaned_q_sum
             q.answered_by = _ensure_string(s.get("answered_by"))
-            q.answer_summary = _ensure_string(s.get("answer_summary"))
-            q.overall_summary = _ensure_string(s.get("overall_summary"))
+            q.answer_summary = cleaned_a_sum
+            q.overall_summary = cleaned_o_sum
             q.category = _ensure_string(s.get("category"))
-            q.question_about = _ensure_string(s.get("question_about"))
-            q.key_answer = _ensure_string(s.get("key_answer"))
+            q.question_about = cleaned_q_about
+            q.key_answer = cleaned_key_ans
             q.full_content = full_content
         else:
             # Create new
@@ -278,13 +314,13 @@ def import_json_file(db, filepath: str) -> bool:
                 word_count=item.get("word_count"),
                 asked_by=_ensure_string(s.get("asked_by")),
                 ministry=_ensure_string(s.get("ministry")),
-                question_summary=_ensure_string(s.get("question_summary")),
+                question_summary=cleaned_q_sum,
                 answered_by=_ensure_string(s.get("answered_by")),
-                answer_summary=_ensure_string(s.get("answer_summary")),
-                overall_summary=_ensure_string(s.get("overall_summary")),
+                answer_summary=cleaned_a_sum,
+                overall_summary=cleaned_o_sum,
                 category=_ensure_string(s.get("category")),
-                question_about=_ensure_string(s.get("question_about")),
-                key_answer=_ensure_string(s.get("key_answer")),
+                question_about=cleaned_q_about,
+                key_answer=cleaned_key_ans,
                 full_content=full_content
             )
             db.add(q)

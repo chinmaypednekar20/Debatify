@@ -1,9 +1,59 @@
+# ─── Python ──────────────────────────────────────────────
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+
+# ─── Node / Frontend ─────────────────────────────────────
 node_modules/
-.env
-*.db
-*.sqlite3
-*.log
 dist/
 build/
+*.local
+
+# ─── Environment & secrets ───────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Databases (regenerate with backend.json_to_db) ──────
+*.db
+*.sqlite3
+
+# ─── Logs ────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Editors / OS ────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Project docs, reports & scratch work ────────────────
+documentation/
+scratch/
+*.docx
+*.pdf
+
+# ─── Intermediate pipeline artifacts ─────────────────────
+# Produced by extractor/ and summarizer/ in the working dir;
+# curated per-session copies live under outputs/<date>/.
+extracted_text_v*.txt
+questions_v*.txt
+questions_v*.json
+summarizer/final_summary.json
+
+# Vector-index caches (the chatbot builds its index in memory)
+*.faiss
+*.pkl
+
+# ─── One-off maintenance scripts ─────────────────────────
+backend/clean_db.py
+
+# ─── Boilerplate ─────────────────────────────────────────
+frontend/README.md
